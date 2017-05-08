@@ -14,6 +14,8 @@
 	#define RX_BUFFER_SIZE 128
 	#define BRC(baudRate) ((F_CPU/16/baudRate) - 1)
 
+   #define UREF 4.7
+   #define RESOLUTION 1024.0
 
 	typedef struct{
 		uint8_t DS_pin;

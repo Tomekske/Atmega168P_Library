@@ -24,7 +24,7 @@ void pinMode(volatile uint8_t pin,volatile uint8_t state)
 {
 	volatile uint8_t newPin; 				//declare a new variable
 
-	if((pin >=2 && pin <= 7)) 				//checking if parameter is between a certain range [2-7]
+	if(pin >=2 && pin <= 7)				    //checking if parameter is between a certain range [2-7]
 	{
 		if(state == 1) 					    //if pin state is 1 then we set pin as an output
 			DDRD|= (1 << pin); 			    //pin high
@@ -53,7 +53,7 @@ void digitalWrite(volatile uint8_t pin,volatile uint8_t state)
 {
 	volatile uint8_t newPin;				//declare a new variable
 
-	if((pin >=2 && pin <= 7))				//checking if parameter is between a certain range [2-7]
+	if(pin >=2 && pin <= 7)				 	//checking if parameter is between a certain range [2-7]
 	{
 		if(state == 1)						//if pin state is 1 then we set pin as a high pin
 			PORTD|= (1 << pin); 			//pin high
@@ -69,6 +69,26 @@ void digitalWrite(volatile uint8_t pin,volatile uint8_t state)
 			PORTB |= (1 << newPin); 		//pin high
 		else 								//else we set pin as a low pin
 			PORTB &= ~(1 << newPin); 		//pin low
+	}
+}
+
+/**
+  * @brief  Function toggle pins
+  * @param  pin: select pin which you want to toggle
+  * @retval None
+  */
+void digitalTogglePin(volatile uint8_t pin)
+{
+	volatile uint8_t newPin;
+
+	if(pin >=2 && pin <= 7)
+	{
+		PORTD ^= (1 << pin); 
+	}
+	else if(pin >= 8 && pin <= 12)	
+	{
+		newPin = pin - PORTCOUNT;
+		PORTB ^= (1 << newPin);
 	}
 }
 
@@ -136,7 +156,7 @@ void shiftOut(ShiftRegister shift)
   * @param  state: select if pin is low or high
   * @retval None
   */
- void registerWrite(ShiftRegister *shift,int shiftregisterNumber,int pin,int state)
+void registerWrite(ShiftRegister *shift,int shiftregisterNumber,int pin,int state)
 {
 	int absolutePosition = calculateShiftPosition(shiftregisterNumber,pin);
 	shift->reg[absolutePosition] = state; // choose which pin you want to set high or low
@@ -149,11 +169,27 @@ void shiftOut(ShiftRegister shift)
   * @param  shiftregisterNumber: select which shiftregister you want to use
   * @retval None
   */
- void initShiftregister(ShiftRegister *shift,int shiftregisterNumber)
+void initShiftregister(ShiftRegister *shift,int shiftregisterNumber)
  {
 	 for(int i = 0; i < 8;i++)
 		registerWrite(shift,shiftregisterNumber,i,LOW);
  }
+
+/**
+  * @brief  Function to toggle shiftregister pins
+  * @param  shift: select the master shiftregister you want to use
+  * @param  shiftregisterNumber: select which shiftregister you want to use
+  * @param  pin: select relative pin which you want to configure
+  * @retval None
+  */
+void registerTogglePin(ShiftRegister *shift,int shiftregisterNumber,int pin)
+{
+	static int state[PORTCOUNT] = {1,1,1,1,1,1,1,1}; 
+	int absolutePosition = calculateShiftPosition(shiftregisterNumber,pin);
+	shift->reg[absolutePosition] = state[pin]; // choose which pin you want to set high or low
+	state[pin] = !state[pin];
+	shiftOut(*shift); // shifting out data
+}
 
 
 
@@ -166,13 +202,14 @@ void shiftOut(ShiftRegister shift)
   * @param  baudrate: select communication speed
   * @retval None
   */
- void serialStart(int baudRate)
+void initSerial(int baudRate)
 {
- 	UBRR0H =  (unsigned char)(BRC(baudRate) >> 8);   // The UBRR0H contains the four most significant bits
- 	UBRR0L =  (unsigned char)BRC(baudRate);          // The UBRR0H contains the four least significant bits
+ 	UBRR0H =  (unsigned char)(BRC(baudRate) >> 8);      // The UBRR0H contains the four most significant bits
+ 	UBRR0L =  (unsigned char)BRC(baudRate);             // The UBRR0H contains the four least significant bits
 
- 	UCSR0B = (1<<RXEN0)|(1<<TXEN0);              // Enable receiver and transmiter
- 	UCSR0C = (3<<UCSZ00) ;                       // Using 1 stopbit and 8 bit Character Size
+ 	UCSR0B = (1<<RXEN0) | (1<<TXEN0) | (1 << RXCIE0);   // Enable receiver,transmiter and enable RX interrupts
+ 	UCSR0C = (3<<UCSZ00);                               // Using 1 stopbit and 8 bit Character Size
+ 	sei();
 }
 
 /**
@@ -180,10 +217,10 @@ void shiftOut(ShiftRegister shift)
   * @param  data: specify which byte you want to send
   * @retval None
   */
-void sendChar(char data)
+void serialSendChar(char data)
 {
-	while(!(UCSR0A & (1<<UDRE0))); /* Wait for empty transmit buffer */
-	UDR0 = data; /* Get and return received data from buffer */
+	while(!(UCSR0A & (1<<UDRE0))); //Wait for empty transmit buffer
+	UDR0 = data; //Get and return received data from buffer 
 }
 
 /**
@@ -191,11 +228,11 @@ void sendChar(char data)
   * @param  data: specify which string you want to send
   * @retval None
   */
-void serialWrite(char* sendString)
+void serialSendString(char* sendString)
 {
 	while(*sendString != NULL)
 	{
-		sendChar(*sendString);
+		serialSendChar(*sendString);
 		sendString++;
 	}
 }
@@ -205,7 +242,7 @@ void serialWrite(char* sendString)
   * @param  None
   * @retval received character
   */
-char serialRead()
+char serialReadChar()
 {
 	 while ( !(UCSR0A & (1<<RXC0))); //Wait for data to be received
 	 return UDR0; //Get and return received data from buffer 
@@ -216,14 +253,105 @@ char serialRead()
   * @param  str: String you want to copy received data to
   * @retval None
   */
- void serialReadString(char *str)
- {
+void serialReadString(char *str)
+{
 	char data;
 
 	do
 	{
-		data = serialRead();
+		data = serialReadChar();
 		*str = data;
 		str++;
 	}while(data != 13); //CR = enter
- }
+	*str = '\0';
+}
+
+
+
+//--------------------------------------------------------------------------------------------------------------//
+// 											   ADC				           				        				//
+//--------------------------------------------------------------------------------------------------------------//
+
+/**
+  * @brief  Function initialize ADC
+  * @param  None
+  * @retval None
+  */
+void initADC()
+{
+	ADMUX |= (1<<REFS0); //Select Vref=AVcc
+	ADCSRA |= (1<<ADPS2) | (1<<ADPS1) | (1<<ADPS0) | (1<<ADEN); //set prescaller to 128 and enable ADC
+
+}
+
+/**
+  * @brief  Function to read ADC value from ADC channel
+  * @param  ADCchannel: enter an integer ADC channel between (0-7)
+  * @retval ADC value
+  */
+uint16_t readADC(uint8_t ADCchannel)
+{
+	ADMUX = (ADMUX & 0xF0) | (ADCchannel & 0x0F); //select ADC channel with safety mask
+	ADCSRA |= (1<<ADSC); //single conversion mode
+	while(ADCSRA & (1<<ADSC)); // wait until ADC conversion is complete
+	return ADC;
+}
+
+/**
+  * @brief  Function to conver ADC valur to volt
+  * @param  value: enter the ADC value
+  * @retval ADC valur in volt
+  */
+float voltADC(uint16_t value)
+{
+	return(value* UREF) /RESOLUTION;
+}
+
+/**
+  * @brief  Function to conver ADC valur to millivolt
+  * @param  volt: enter volt value
+  * @retval ADC valur in millivolt
+  */
+int mVoltADC(float volt)
+{
+	return volt * 1000;
+}
+
+
+
+//--------------------------------------------------------------------------------------------------------------//
+// 											   Interrupts    	           				        				//
+//--------------------------------------------------------------------------------------------------------------//
+
+/**
+  * @brief  Function to setup external intterupts
+  * @param  None
+  * @retval None
+  */
+void initInterrupt()
+{
+	 PCMSK2 |= (1 << PCINT23)|(1 << PCINT22)|(1 << PCINT21)|(1 << PCINT20)|(1 << PCINT19)|(1 << PCINT18);
+	 PCMSK0 |= (1 << PCINT5)|(1 << PCINT4)|(1 << PCINT3)|(1 << PCINT2)|(1 << PCINT1)|(1 << PCINT0);
+	 PCICR |=  (1 << PCIE0)|(1 << PCIE2);
+	 sei();
+}
+
+
+
+//--------------------------------------------------------------------------------------------------------------//
+// 														Timers													//
+//--------------------------------------------------------------------------------------------------------------//
+
+/**
+  * @brief  Function to setup timers
+  * @param  None
+  * @retval None
+  */
+void initTimer()
+{
+	TCCR0A = (1 << WGM01);					//set CTC bit
+	OCR0A = 16;								//ticks for 0.001s
+	TIMSK0 = (1 << OCIE0A);					//interrupt enable
+	sei();
+	TCCR0B = (1 << CS00) | (1 << CS02) ;	//1024 prescaller ;
+}
