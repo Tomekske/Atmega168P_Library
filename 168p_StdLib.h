@@ -180,15 +180,21 @@ void initShiftregister(ShiftRegister *shift,int shiftregisterNumber)
   * @param  shift: select the master shiftregister you want to use
   * @param  shiftregisterNumber: select which shiftregister you want to use
   * @param  pin: select relative pin which you want to configure
+  * @param  defaultValue: select 1 if there is no need for a known logical level or select 0 if you want to make sure the pin will be LOW
   * @retval None
   */
-void registerTogglePin(ShiftRegister *shift,int shiftregisterNumber,int pin)
+void registerTogglePin(ShiftRegister *shift,int shiftregisterNumber,int pin,int defaultValue)
 {
-	static int state[PORTCOUNT] = {1,1,1,1,1,1,1,1}; 
+	static int state[PORTCOUNT] = {1,1,1,1,1,1,1,1}; //pins are high at startup of the functioncall
 	int absolutePosition = calculateShiftPosition(shiftregisterNumber,pin);
+
+	//Make sure pins are LOW
+	if (defaultValue == 0)
+		state[pin] = 0;
+
 	shift->reg[absolutePosition] = state[pin]; // choose which pin you want to set high or low
-	state[pin] = !state[pin];
 	shiftOut(*shift); // shifting out data
+	state[pin] = !state[pin];
 }
 
 
@@ -196,6 +202,8 @@ void registerTogglePin(ShiftRegister *shift,int shiftregisterNumber,int pin)
 //--------------------------------------------------------------------------------------------------------------//
 // 											   UART				           				        				//
 //--------------------------------------------------------------------------------------------------------------//
+
+
 
 /**
   * @brief  Function to setup UART
@@ -257,13 +265,14 @@ void serialReadString(char *str)
 {
 	char data;
 
+	//copy data to string until null byte is reached
 	do
 	{
 		data = serialReadChar();
 		*str = data;
 		str++;
 	}while(data != 13); //CR = enter
-	*str = '\0';
+	*str = '\0'; //add null byte
 }
 
 
@@ -271,6 +280,8 @@ void serialReadString(char *str)
 //--------------------------------------------------------------------------------------------------------------//
 // 											   ADC				           				        				//
 //--------------------------------------------------------------------------------------------------------------//
+
+
 
 /**
   * @brief  Function initialize ADC
@@ -281,7 +292,6 @@ void initADC()
 {
 	ADMUX |= (1<<REFS0); //Select Vref=AVcc
 	ADCSRA |= (1<<ADPS2) | (1<<ADPS1) | (1<<ADPS0) | (1<<ADEN); //set prescaller to 128 and enable ADC
-
 }
 
 /**
@@ -322,6 +332,8 @@ int mVoltADC(float volt)
 //--------------------------------------------------------------------------------------------------------------//
 // 											   Interrupts    	           				        				//
 //--------------------------------------------------------------------------------------------------------------//
+
+
 
 /**
   * @brief  Function to setup external intterupts
